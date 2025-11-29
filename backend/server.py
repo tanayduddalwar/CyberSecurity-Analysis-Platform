@@ -5,12 +5,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List
 from dotenv import load_dotenv
-from agents import Agent, Runner, trace
-
+from agents import Agent, Runner, trace, OpenAIChatCompletionsModel
+from openai import AsyncOpenAI
 from context import SECURITY_RESEARCHER_INSTRUCTIONS, get_analysis_prompt, enhance_summary
 from mcp_servers import create_semgrep_server
-
+import logging
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+google_api_key = os.getenv('GEMINI_API_KEY')
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+gemini_client = AsyncOpenAI(base_url=GEMINI_BASE_URL, api_key=google_api_key)
+gemini_model = OpenAIChatCompletionsModel(model="gemini-2.0-flash", openai_client=gemini_client)
 
 app = FastAPI(title="Cybersecurity Analyzer API")
 
@@ -63,8 +70,8 @@ def validate_request(request: AnalyzeRequest) -> None:
 
 def check_api_keys() -> None:
     """Verify required API keys are configured."""
-    if not os.getenv("OPENAI_API_KEY"):
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+    if not os.getenv("GEMINI_API_KEY"):
+        raise HTTPException(status_code=500, detail="Gemini API key not configured")
 
 
 def create_security_agent(semgrep_server) -> Agent:
@@ -72,7 +79,7 @@ def create_security_agent(semgrep_server) -> Agent:
     return Agent(
         name="Security Researcher",
         instructions=SECURITY_RESEARCHER_INSTRUCTIONS,
-        model="gpt-4.1-mini",
+        model=gemini_model,
         mcp_servers=[semgrep_server],
         output_type=SecurityReport,
     )
@@ -95,22 +102,18 @@ def format_analysis_response(code: str, report: SecurityReport) -> SecurityRepor
 
 @app.post("/api/analyze", response_model=SecurityReport)
 async def analyze_code(request: AnalyzeRequest) -> SecurityReport:
-    """
-    Analyze Python code for security vulnerabilities using OpenAI Agents and Semgrep.
-
-    This endpoint combines static analysis via Semgrep with AI-powered security analysis
-    to provide comprehensive vulnerability detection and remediation guidance.
-    """
-    validate_request(request)
-    check_api_keys()
-
     try:
+        check_api_keys()
+        validate_request(request)
         report = await run_security_analysis(request.code)
         return format_analysis_response(request.code, report)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-
+        logger.exception("Analysis failed")  # logs full traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"Analysis failed: {str(e)}"
+        )
+    
 @app.get("/health")
 async def health():
     """Health check endpoint."""

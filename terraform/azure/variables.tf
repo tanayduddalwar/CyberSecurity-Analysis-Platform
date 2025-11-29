@@ -7,8 +7,9 @@ variable "project_name" {
 variable "location" {
   description = "Azure region for resources"
   type        = string
-  default     = "eastus"
+  default     = "eastasia"
 }
+
 
 variable "resource_group_name" {
   description = "Name of the resource group"
