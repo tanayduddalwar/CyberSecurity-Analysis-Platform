@@ -85,7 +85,7 @@ resource "google_cloud_run_service" "app" {
         }
 
         env {
-          name  = "OPENAI_API_KEY"
+          name  = "GEMINI_API_KEY"
           value = var.openai_api_key
         }
 
